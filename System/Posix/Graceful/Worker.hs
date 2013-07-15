@@ -10,7 +10,6 @@ import Control.Monad ( void, forever, when )
 import Network ( Socket )
 import Network.Socket ( close, accept, shutdown, ShutdownCmd(ShutdownBoth) )
 import System.Exit ( ExitCode(..) )
-import System.Posix.Graceful.Handler
 import System.Posix.Process ( exitImmediately )
 import System.Posix.Signals ( Handler(..), installHandler
                             , keyboardTermination )
@@ -29,7 +28,6 @@ workerProcess WorkerSettings { workerSettingsInitialize = initialize
                              , workerSettingsApplication = application
                              , workerSettingsFinalize = finalize
                              } sock = do
-  defaultHandlers
   void $ installHandler keyboardTermination (CatchOnce $ close sock) Nothing
   count <- newTVarIO (0 :: Int)
   void $ tryIO $ bracket initialize finalize $ \resource ->

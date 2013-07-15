@@ -3,19 +3,20 @@ module System.Posix.Graceful
     , graceful
     ) where
 
-import Control.Monad ( replicateM, void, when )
 import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar )
+import Control.Exception ( IOException, bracket, try )
+import Control.Monad ( replicateM, void, when )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
 import Network.Socket ( Socket(..), socket, mkSocket
                       , connect, close, accept, shutdown, bindSocket, listen
                       , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
                       , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
-import System.Posix.Process ( getProcessID, forkProcess, executeFile )
-import Control.Exception ( IOException, bracket, try )
 import System.Directory ( doesFileExist, removeFile )
+import System.Posix.Process ( getProcessID, forkProcess, executeFile )
+import System.Posix.Types ( ProcessID )
+
 import System.Posix.Graceful.Handler
 import System.Posix.Graceful.Worker
-import System.Posix.Types ( ProcessID )
 
 -- | Server settings
 data GracefulSettings resource =
@@ -42,7 +43,7 @@ graceful settings = do
   writeProcessId settings
   esock <- tryRecvSocket settings
   sock <- either (const $ listenPort settings) return esock
-  let worker = workerProcess (toWorkerSettings settings) sock
+  let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
       launch = launchWorkers (gracefulSettingsWorkerCount settings) worker
   pids <- launch
   quit <- newEmptyMVar
