@@ -18,7 +18,8 @@ tested-with:         GHC ==7.6.3
 library
   exposed-modules:     System.Posix.Graceful
   ghc-options:         -Wall
-  -- other-modules:
+  other-modules:       System.Posix.Graceful.Handler
+                       System.Posix.Graceful.Worker
   build-depends:       base ==4.6.*
                      , network
                      , unix
