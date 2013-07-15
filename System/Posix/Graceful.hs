@@ -4,7 +4,7 @@ module System.Posix.Graceful
     ) where
 
 import Control.Monad ( replicateM, void, forever, when )
-import Control.Concurrent ( MVar, newEmptyMVar, putMVar, takeMVar, forkIO, threadDelay )
+import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar, forkIO, threadDelay )
 import Control.Concurrent.STM ( atomically, newTVarIO, modifyTVar', readTVar )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
 import Network.Socket ( Socket(..), socket, mkSocket
@@ -37,37 +37,46 @@ data GracefulSettings resource =
 
 -- | Make server application enable shutdown/restart gracefully
 graceful :: GracefulSettings a -> IO ()
-graceful GracefulSettings { gracefulSettingsPortNumber = portNumber
-                          , gracefulSettingsWorkerCount = workerCount
-                          , gracefulSettingsInitialize = initialize
-                          , gracefulSettingsApplication = application
-                          , gracefulSettingsFinalize = finalize
-                          , gracefulSettingsSockFile = sockFile
-                          , gracefulSettingsPidFile = pidFile
-                          , gracefulSettingsBinary = binary
-                          } = do
-  esock <- tryIO $ bracket (socket AF_UNIX Stream 0) close $ \uds -> do
-             connect uds (SockAddrUnix sockFile)
-             sock <- recvSock uds
-             shutdown uds ShutdownBoth
-             return sock
-  getProcessID >>= writeFile pidFile . show
-  sock <- either (const $ listenOn $ PortNumber portNumber) return esock
-  let launch = launchWorkers workerCount $ workerProcess sock initialize finalize application
-      spawn = spawnProcess binary sock sockFile
+graceful settings = do
+  writeProcessId settings
+  esock <- tryRecvSocket settings
+  sock <- either (const $ listenPort settings) return esock
+  let worker = workerProcess settings sock
+      launch = launchWorkers (gracefulSettingsWorkerCount settings) worker
   pids <- launch
   quit <- newEmptyMVar
-  resetHandlers pids quit launch spawn
+  resetHandlers HandlerSettings { handlerSettingsProcessIDs = pids
+                                , handlerSettingsQuitProcess = putMVar quit True
+                                , handlerSettingsLaunchWorkers = launch
+                                , handlerSettingsSpawnProcess = spawnProcess settings sock
+                                }
   void $ takeMVar quit
-  return ()
+
+listenPort :: GracefulSettings resource -> IO Socket
+listenPort = listenOn . PortNumber . gracefulSettingsPortNumber
+
+tryRecvSocket :: GracefulSettings resource -> IO (Either IOException Socket)
+tryRecvSocket settings =
+    tryIO $ bracket (socket AF_UNIX Stream 0) close $ \uds -> do
+      connect uds $ SockAddrUnix $ gracefulSettingsSockFile settings
+      sock <- recvSock uds
+      shutdown uds ShutdownBoth
+      return sock
+
+writeProcessId :: GracefulSettings resource -> IO ()
+writeProcessId settings =
+    getProcessID >>=
+    writeFile (gracefulSettingsPidFile settings) . show
 
 clearUnixDomainSocket :: FilePath -> IO ()
 clearUnixDomainSocket sockFile = do
   exist <- doesFileExist sockFile
   when exist $ removeFile sockFile
 
-spawnProcess :: FilePath -> Socket -> FilePath -> IO ()
-spawnProcess binary sock sockFile = do
+spawnProcess :: GracefulSettings resource -> Socket -> IO ()
+spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
+                              , gracefulSettingsBinary = binary
+                              } sock = do
   clearUnixDomainSocket sockFile
   bracket (socket AF_UNIX Stream 0) close $ \uds -> do
     bindSocket uds $ SockAddrUnix sockFile
@@ -107,13 +116,20 @@ shutdownGracefully pids = do
 launchWorkers :: Int -> IO () -> IO [ProcessID]
 launchWorkers n = replicateM n . forkProcess
 
-resetHandlers :: [ProcessID] -> MVar Bool -> IO [ProcessID] -> IO () -> IO ()
-resetHandlers pids quit launch spawn = do
-  void $ installHandler keyboardTermination (CatchOnce $ handleSIGQUIT pids quit) Nothing
-  void $ installHandler lostConnection (CatchOnce $ handleSIGHUP pids quit launch spawn) Nothing
-  void $ installHandler keyboardSignal (CatchOnce $ handleSIGINT pids) Nothing
-  void $ installHandler softwareTermination (CatchOnce $ handleSIGTERM pids) Nothing
-  void $ installHandler userDefinedSignal2 (CatchOnce $ handleSIGUSR2 pids quit spawn) Nothing
+data HandlerSettings =
+    HandlerSettings { handlerSettingsProcessIDs :: [ProcessID]
+                    , handlerSettingsQuitProcess:: IO ()
+                    , handlerSettingsLaunchWorkers :: IO [ProcessID]
+                    , handlerSettingsSpawnProcess :: IO ()
+                    }
+
+resetHandlers :: HandlerSettings -> IO ()
+resetHandlers settings = do
+  void $ installHandler keyboardTermination (CatchOnce $ handleSIGQUIT settings) Nothing
+  void $ installHandler lostConnection (CatchOnce $ handleSIGHUP settings) Nothing
+  void $ installHandler keyboardSignal (CatchOnce $ handleSIGINT settings) Nothing
+  void $ installHandler softwareTermination (CatchOnce $ handleSIGTERM settings) Nothing
+  void $ installHandler userDefinedSignal2 (CatchOnce $ handleSIGUSR2 settings) Nothing
 
 defaultHandlers :: IO ()
 defaultHandlers = do
@@ -124,55 +140,52 @@ defaultHandlers = do
   void $ installHandler userDefinedSignal2 Default Nothing
 
 -- fast shutdown
-handleSIGINT :: [ProcessID] -> IO ()
-handleSIGINT pids = do
-  broadcastSignal keyboardSignal pids
+handleSIGINT :: HandlerSettings -> IO ()
+handleSIGINT settings = do
+  broadcastSignal keyboardSignal $ handlerSettingsProcessIDs settings
   exitImmediately $ ExitFailure 130 -- SIGINT exit code
 
 -- fast shutdown
-handleSIGTERM :: [ProcessID] -> IO ()
-handleSIGTERM pids = do
-  broadcastSignal softwareTermination pids
+handleSIGTERM :: HandlerSettings -> IO ()
+handleSIGTERM settings = do
+  broadcastSignal softwareTermination $ handlerSettingsProcessIDs settings
   exitImmediately $ ExitFailure 143 -- SIGTERM exit code
 
 -- graceful shutdown
-handleSIGQUIT :: [ProcessID] -> MVar Bool -> IO ()
-handleSIGQUIT pids quit = do
-  shutdownGracefully pids
-  putMVar quit True
+handleSIGQUIT :: HandlerSettings -> IO ()
+handleSIGQUIT settings = do
+  shutdownGracefully $ handlerSettingsProcessIDs settings
+  handlerSettingsQuitProcess settings
 
 -- starting new worker processes, graceful shutdown of old worker processes
-handleSIGHUP :: [ProcessID] -> MVar Bool -> IO [ProcessID] -> IO () -> IO ()
-handleSIGHUP oldpids quit launch spawn = do
-  newpids <- launch
-  resetHandlers newpids quit launch spawn
-  shutdownGracefully oldpids
+handleSIGHUP :: HandlerSettings -> IO ()
+handleSIGHUP settings = do
+  newpids <- handlerSettingsLaunchWorkers settings
+  resetHandlers settings { handlerSettingsProcessIDs = newpids }
+  shutdownGracefully $ handlerSettingsProcessIDs settings
 
-handleSIGUSR2 :: [ProcessID] -> MVar Bool -> IO () -> IO ()
-handleSIGUSR2 pids quit spawn = do
-  spawn
-  shutdownGracefully pids
-  putMVar quit True
+handleSIGUSR2 :: HandlerSettings -> IO ()
+handleSIGUSR2 settings = do
+  handlerSettingsSpawnProcess settings
+  shutdownGracefully $ handlerSettingsProcessIDs settings
+  handlerSettingsQuitProcess settings
 
-workerProcess :: Socket
-              -> IO resource
-              -> (resource -> IO ())
-              -> (Socket -> resource -> IO ())
-              -> IO ()
-workerProcess sock initialize finalize application = do
+workerProcess :: GracefulSettings resource -> Socket -> IO ()
+workerProcess GracefulSettings { gracefulSettingsInitialize = initialize
+                               , gracefulSettingsApplication = application
+                               , gracefulSettingsFinalize = finalize
+                               } sock = do
   defaultHandlers
   void $ installHandler keyboardTermination (CatchOnce $ close sock) Nothing
   count <- newTVarIO (0 :: Int)
-  void $ tryIO $ bracket initialize finalize $ \resource -> do
-    void $ forever $ do
-      (s, _) <- accept sock
-      let app = do
-            void $ application s resource
-            shutdown s ShutdownBoth
-      forkIO $ bracket_
-                 (atomically $ modifyTVar' count succ)
-                 (atomically $ modifyTVar' count pred)
-                 (app `finally` close s)
+  void $ tryIO $ bracket initialize finalize $ \resource ->
+      void $ forever $ do
+        (s, _) <- accept sock
+        let app = application s resource >> shutdown s ShutdownBoth
+        forkIO $ bracket_
+                   (atomically $ modifyTVar' count succ)
+                   (atomically $ modifyTVar' count pred)
+                   (app `finally` close s)
   waitAllAction count
   close sock
   exitImmediately ExitSuccess
