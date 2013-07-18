@@ -43,7 +43,7 @@ daemonize application = do
     void $ createSession
     void $ forkProcess $ do
       changeWorkingDirectory "/"
-      devnull <- openFd "/tmp/sample.log" ReadWrite Nothing defaultFileFlags
+      devnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
       let sendTo fd' fd = closeFd fd >> dupTo fd' fd
       mapM_ (sendTo devnull) [ stdInput, stdOutput, stdError ]
       void $ installHandler sigHUP Ignore Nothing
