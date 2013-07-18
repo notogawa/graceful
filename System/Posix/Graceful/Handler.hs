@@ -4,9 +4,10 @@ module System.Posix.Graceful.Handler
     , defaultHandlers
     ) where
 
+import Control.Concurrent.STM ( atomically, TVar, newTVarIO, readTVar, modifyTVar' )
 import Control.Monad ( void )
 import System.Exit ( ExitCode(..) )
-import System.Posix.Process ( getProcessStatus, exitImmediately )
+import System.Posix.Process ( getAnyProcessStatus, exitImmediately )
 import System.Posix.Signals ( Signal, signalProcess
                             , Handler(..), installHandler
                             , keyboardTermination, lostConnection
@@ -15,7 +16,7 @@ import System.Posix.Signals ( Signal, signalProcess
 import System.Posix.Types ( ProcessID )
 
 data HandlerSettings =
-    HandlerSettings { handlerSettingsProcessIDs :: [ProcessID]
+    HandlerSettings { handlerSettingsProcessIDs :: TVar [ProcessID]
                     , handlerSettingsQuitProcess :: IO ()
                     , handlerSettingsLaunchWorkers :: IO [ProcessID]
                     , handlerSettingsSpawnProcess :: IO ()
@@ -23,11 +24,11 @@ data HandlerSettings =
 
 resetHandlers :: HandlerSettings -> IO ()
 resetHandlers settings = do
-  void $ installHandler keyboardTermination (CatchOnce $ handleSIGQUIT settings) Nothing
-  void $ installHandler lostConnection (CatchOnce $ handleSIGHUP settings) Nothing
-  void $ installHandler keyboardSignal (CatchOnce $ handleSIGINT settings) Nothing
-  void $ installHandler softwareTermination (CatchOnce $ handleSIGTERM settings) Nothing
-  void $ installHandler userDefinedSignal2 (CatchOnce $ handleSIGUSR2 settings) Nothing
+  void $ installHandler keyboardTermination (Catch $ handleSIGQUIT settings) Nothing
+  void $ installHandler lostConnection (Catch $ handleSIGHUP settings) Nothing
+  void $ installHandler keyboardSignal (Catch $ handleSIGINT settings) Nothing
+  void $ installHandler softwareTermination (Catch $ handleSIGTERM settings) Nothing
+  void $ installHandler userDefinedSignal2 (Catch $ handleSIGUSR2 settings) Nothing
 
 defaultHandlers :: IO ()
 defaultHandlers = do
@@ -37,44 +38,57 @@ defaultHandlers = do
   void $ installHandler softwareTermination Default Nothing
   void $ installHandler userDefinedSignal2 Default Nothing
 
-broadcastSignal :: Signal -> [ProcessID] -> IO ()
-broadcastSignal = mapM_ . signalProcess
+broadcastSignal :: HandlerSettings -> Signal -> IO ()
+broadcastSignal settings s = do
+    pids <- atomically $ readTVar $ handlerSettingsProcessIDs settings
+    mapM_ (signalProcess s) pids
 
-waitAllProcess :: [ProcessID] -> IO ()
-waitAllProcess = mapM_ $ getProcessStatus True True
+waitAllProcess :: HandlerSettings -> IO ()
+waitAllProcess settings = do
+  status <- getAnyProcessStatus True False
+  -- appendFile "/tmp/log" $ shows status "\n"
+  case status of
+    Nothing -> return ()
+    Just (pid, _s) -> do
+                remain <-atomically $ do
+                            modifyTVar' (handlerSettingsProcessIDs settings) (filter (pid /=))
+                            readTVar (handlerSettingsProcessIDs settings)
+                if null remain then return () else waitAllProcess settings
 
-shutdownGracefully :: [ProcessID] -> IO ()
-shutdownGracefully pids = do
-  broadcastSignal keyboardTermination pids
-  waitAllProcess pids
+shutdownGracefully :: HandlerSettings -> IO ()
+shutdownGracefully settings = do
+  broadcastSignal settings keyboardTermination
+  waitAllProcess settings
 
 -- fast shutdown
 handleSIGINT :: HandlerSettings -> IO ()
 handleSIGINT settings = do
-  broadcastSignal keyboardSignal $ handlerSettingsProcessIDs settings
+  broadcastSignal settings keyboardSignal
+  waitAllProcess settings
   exitImmediately $ ExitFailure 130 -- SIGINT exit code
 
 -- fast shutdown
 handleSIGTERM :: HandlerSettings -> IO ()
 handleSIGTERM settings = do
-  broadcastSignal softwareTermination $ handlerSettingsProcessIDs settings
+  broadcastSignal settings softwareTermination
+  waitAllProcess settings
   exitImmediately $ ExitFailure 143 -- SIGTERM exit code
 
 -- graceful shutdown
 handleSIGQUIT :: HandlerSettings -> IO ()
 handleSIGQUIT settings = do
-  shutdownGracefully $ handlerSettingsProcessIDs settings
+  shutdownGracefully settings
   handlerSettingsQuitProcess settings
 
 -- starting new worker processes, graceful shutdown of old worker processes
 handleSIGHUP :: HandlerSettings -> IO ()
 handleSIGHUP settings = do
-  newpids <- handlerSettingsLaunchWorkers settings
+  newpids <- handlerSettingsLaunchWorkers settings >>= newTVarIO
   resetHandlers settings { handlerSettingsProcessIDs = newpids }
-  shutdownGracefully $ handlerSettingsProcessIDs settings
+  shutdownGracefully settings
 
 handleSIGUSR2 :: HandlerSettings -> IO ()
 handleSIGUSR2 settings = do
   handlerSettingsSpawnProcess settings
-  shutdownGracefully $ handlerSettingsProcessIDs settings
+  shutdownGracefully settings
   handlerSettingsQuitProcess settings

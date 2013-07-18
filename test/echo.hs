@@ -1,4 +1,4 @@
-import Network.Socket ( send )
+import Network.Socket ( send, recv )
 import Control.Concurrent
 import Control.Monad
 import System.Exit
@@ -19,22 +19,11 @@ main = daemonize $ graceful settings
                  , gracefulSettingsInitialize = return ()
                  , gracefulSettingsApplication = application
                  , gracefulSettingsFinalize = const $ return ()
-                 , gracefulSettingsSockFile = "/tmp/sample.sock"
-                 , gracefulSettingsPidFile = "/tmp/sample.pid"
-                 , gracefulSettingsBinary = "/tmp/sample"
+                 , gracefulSettingsSockFile = "/tmp/echo-server.sock"
+                 , gracefulSettingsPidFile = "/tmp/echo-server.pid"
+                 , gracefulSettingsBinary = "/tmp/echo-server"
                  }
-      application sock _ = do
-        pid <- getProcessID
-        threadDelay 1000000
-        let content = shows pid " test\n"
-        mapM_ (send sock)
-                  [ "HTTP/1.1 200 OK\r\n"
-                  , "Connection: close\r\n"
-                  , "Content-Type: text/plain; charset=utf-8\r\n"
-                  , "Content-Length: " ++ show (length content) ++ "\r\n"
-                  , "\r\n"
-                  , content
-                  ]
+      application sock _ = forever $ recv sock 1024 >>= send sock
 
 daemonize :: IO () -> IO ()
 daemonize application = do

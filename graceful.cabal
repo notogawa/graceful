@@ -26,12 +26,17 @@ library
                      , stm
                      , directory
 
-executable sample
-  hs-source-dirs:      sample
-  main-is:             sample.hs
-  ghc-options:         -Wall -threaded -rtsopts
-  build-depends:       base
+test-suite graceful-spec
+  hs-source-dirs:      test
+  type:                exitcode-stdio-1.0
+  ghc-options:         -Wall -threaded
+  main-is:             Spec.hs
+  -- other-modules:
+  build-depends:       base ==4.*
                      , graceful
-                     , unix
+                     , hspec
+                     , process
                      , network
+                     , unix
                      , stm
+                     , directory

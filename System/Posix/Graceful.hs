@@ -4,6 +4,7 @@ module System.Posix.Graceful
     ) where
 
 import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar )
+import Control.Concurrent.STM ( newTVarIO )
 import Control.Exception ( IOException, bracket, try )
 import Control.Monad ( replicateM, void, when )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
@@ -45,7 +46,7 @@ graceful settings = do
   sock <- either (const $ listenPort settings) return esock
   let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
       launch = launchWorkers (gracefulSettingsWorkerCount settings) worker
-  pids <- launch
+  pids <- launch >>= newTVarIO
   quit <- newEmptyMVar
   resetHandlers HandlerSettings { handlerSettingsProcessIDs = pids
                                 , handlerSettingsQuitProcess = putMVar quit True
