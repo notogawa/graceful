@@ -22,6 +22,7 @@ spec = do
     it "stop (SIGINT)  while access" $ run "/tmp/echo-server" $ stopWhileAccess sigINT
     it "stop (SIGTERM) while access" $ run "/tmp/echo-server" $ stopWhileAccess sigTERM
     it "restart (SIGHUP)" $ run "/tmp/echo-server" restartWhileAccess
+    it "upgrade (SIGUSR2)" $ run "/tmp/echo-server" upgradeWhileAccess
 
 removeFileIfExist :: FilePath -> IO ()
 removeFileIfExist file = do
@@ -55,6 +56,9 @@ echo sock str = send sock str >> recv sock (2 * length str)
 shouldEcho :: Socket -> String -> Expectation
 shouldEcho sock str = echo sock str `shouldReturn` str
 
+shouldDouble :: Socket -> String -> Expectation
+shouldDouble sock str = echo sock str `shouldReturn` (str ++ str)
+
 simpleAccess :: IO ()
 simpleAccess = access (`shouldEcho` "simpleAccess")
 
@@ -66,7 +70,9 @@ access action =
       action sock
 
 buildAsEchoServer :: FilePath -> IO ()
-buildAsEchoServer file = rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-isrc" ] `shouldReturn` ExitSuccess
+buildAsEchoServer file = do
+  removeFileIfExist "/tmp/echo-server"
+  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-isrc" ] `shouldReturn` ExitSuccess
 
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
@@ -91,10 +97,24 @@ stopWhileAccess s = do
 
 restartWhileAccess :: IO ()
 restartWhileAccess = do
-  void $ forkIO $ threadDelay 10000 >> kill sigHUP
-  replicateM_ 100 $ do
-    res <- tryIO $ access $ \sock -> do
-             sock `shouldEcho` "restart"
-             threadDelay 1000
-    res `shouldBe` Right ()
+  res1 <- tryIO $ access $ \sock -> do
+            kill sigHUP
+            sock `shouldEcho` "restart"
+  res1 `shouldBe` Right ()
+  res2 <- tryIO $ access $ \sock -> do
+            sock `shouldEcho` "restart"
+  res2 `shouldBe` Right ()
+  kill sigQUIT
+
+upgradeWhileAccess :: IO ()
+upgradeWhileAccess = do
+  buildAsEchoServer "test/double.hs"
+  res1 <- tryIO $ access $ \sock -> do
+            kill sigUSR2
+            sock `shouldEcho` "restart"
+  res1 `shouldBe` Right ()
+  threadDelay 1000000
+  res2 <- tryIO $ access $ \sock -> do
+            sock `shouldDouble` "restart"
+  res2 `shouldBe` Right ()
   kill sigQUIT
