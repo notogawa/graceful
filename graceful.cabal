@@ -16,6 +16,7 @@ cabal-version:       >=1.8
 tested-with:         GHC ==7.6.3
 
 library
+  hs-source-dirs:      src
   exposed-modules:     System.Posix.Graceful
   ghc-options:         -Wall
   other-modules:       System.Posix.Graceful.Handler

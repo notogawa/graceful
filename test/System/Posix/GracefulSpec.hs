@@ -29,21 +29,18 @@ removeFileIfExist file = do
   when exist $ removeFile file
 
 waitStandby :: FilePath -> IO ()
-waitStandby path =
-    tryIO (readFile path) >>=
-    either (\_ -> waitStandby path) (\_ -> threadDelay 1000)
-
-removeFiles :: FilePath -> IO ()
-removeFiles file =
-    mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
+waitStandby path = do
+  status <- tryIO $ readFile path
+  case status of
+    Left _err -> waitStandby path
+    Right _ok -> threadDelay 1000
 
 run :: String -> IO () -> IO ()
 run file action = do
-  removeFiles file
-  bracket (rawSystem file []) (\_ -> return ()) $ \code -> do
-    code `shouldBe` ExitSuccess
-    waitStandby $ file ++ ".pid"
-    action
+  mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
+  rawSystem file [] `shouldReturn` ExitSuccess
+  waitStandby $ file ++ ".pid"
+  action
 
 kill :: Signal -> IO ()
 kill signal = readFile "/tmp/echo-server.pid" >>=
@@ -69,7 +66,7 @@ access action =
       action sock
 
 buildAsEchoServer :: FilePath -> IO ()
-buildAsEchoServer file = rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server" ] `shouldReturn` ExitSuccess
+buildAsEchoServer file = rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-isrc" ] `shouldReturn` ExitSuccess
 
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
