@@ -41,7 +41,6 @@ toWorkerSettings settings =
 -- | Make server application enable shutdown/restart gracefully
 graceful :: GracefulSettings a -> IO ()
 graceful settings = do
-  writeProcessId settings
   esock <- tryRecvSocket settings
   sock <- either (const $ listenPort settings) return esock
   let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
@@ -53,6 +52,7 @@ graceful settings = do
                                 , handlerSettingsLaunchWorkers = launch
                                 , handlerSettingsSpawnProcess = spawnProcess settings sock
                                 }
+  writeProcessId settings
   void $ takeMVar quit
 
 listenPort :: GracefulSettings resource -> IO Socket

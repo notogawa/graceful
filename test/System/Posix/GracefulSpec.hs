@@ -33,9 +33,7 @@ waitStandby path = tryIO (readFile path) >>=
                    either (\_ -> waitStandby path) (\_ -> threadDelay 1000)
 
 removeFiles :: FilePath -> IO ()
-removeFiles file = do
-  removeFileIfExist $ file ++ ".sock"
-  removeFileIfExist $ file ++ ".pid"
+removeFiles file = mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
 
 run :: String -> IO () -> IO ()
 run file action = do
@@ -50,11 +48,8 @@ kill signal = readFile "/tmp/echo-server.pid" >>=
               signalProcess signal . read
 
 kill' :: Signal -> IO ()
-kill' signal = do
-  pid <- readFile "/tmp/echo-server.pid"
-  void $ tryIO $ signalProcess signal $ read pid
-  threadDelay 10000
-  void $ tryIO $ getProcessStatus True False $ read pid
+kill' signal = readFile "/tmp/echo-server.pid" >>=
+               void . tryIO . signalProcess signal . read
 
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
@@ -73,6 +68,9 @@ access action = bracket (socket AF_INET Stream 0) close $ \sock -> do
 
 build :: IO ExitCode
 build = rawSystem "ghc" [ "--make", "test/echo.hs", "-o", "/tmp/echo-server" ]
+
+ps :: IO ExitCode
+ps = rawSystem "ps" [ "-C", "echo-server" ]
 
 build1stVersion :: IO ()
 build1stVersion = build `shouldReturn` ExitSuccess
