@@ -4,10 +4,10 @@ import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import Network
+import Network.Socket
 import System.Cmd
 import System.Directory
 import System.Exit
-import System.IO
 import System.Posix.Signals
 import System.Posix.Process
 import Test.Hspec
@@ -59,17 +59,17 @@ kill' signal = do
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
 
-shouldEcho :: Handle -> String -> IO ()
-shouldEcho h str = do
-  hPutStrLn h str
-  hFlush h
-  hGetLine h `shouldReturn` str
+echo :: Socket -> String -> IO String
+echo sock str = send sock str >> recv sock (2 * length str)
 
 simpleAccess :: IO ()
-simpleAccess = access (`shouldEcho` "hello")
+simpleAccess = access $ \sock -> echo sock "simpleAccess" `shouldReturn` "simpleAccess"
 
-access :: (Handle -> IO ()) -> IO ()
-access action = bracket (connectTo "localhost" (PortNumber 8080)) hClose action
+access :: (Socket -> IO ()) -> IO ()
+access action = bracket (socket AF_INET Stream 0) close $ \sock -> do
+                  addr <- inet_addr "127.0.0.1"
+                  connect sock (SockAddrInet 8080 addr)
+                  action sock
 
 build :: IO ExitCode
 build = rawSystem "ghc" [ "--make", "test/echo.hs", "-o", "/tmp/echo-server" ]
@@ -81,13 +81,13 @@ simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
 
 quitWhileAccess :: IO ()
-quitWhileAccess = access $ \h -> do
+quitWhileAccess = access $ \sock -> do
                     kill sigQUIT
-                    shouldEcho h "quitWhileAccess"
+                    echo sock "quitWhileAccess" `shouldReturn` "quitWhileAccess"
 
 stopWhileAccess :: Signal -> IO ()
 stopWhileAccess s = do
-  res <- tryIO $ access $ \h -> do
+  res <- tryIO $ access $ \sock -> do
                     kill s
-                    shouldEcho h $ replicate 10240 ' '
+                    forever $ echo sock "stopWhileAccess"
   either (\_ -> True) (\_ -> False) res `shouldBe` True
