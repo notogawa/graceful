@@ -12,17 +12,16 @@ import System.Posix.Signals
 import Test.Hspec
 
 spec :: Spec
-spec = do
-  describe "graceful" $ do
-    it "build echo as echo" $ buildAsEchoServer "test/echo.hs"
-    it "simple access and quit (SIGQUIT)" $ run "/tmp/echo-server" $ simpleAccessAnd sigQUIT
-    it "simple access and stop (SIGINT)"  $ run "/tmp/echo-server" $ simpleAccessAnd sigINT
-    it "simple access and stop (SIGTERM)" $ run "/tmp/echo-server" $ simpleAccessAnd sigTERM
-    it "quit (SIGQUIT) while access" $ run "/tmp/echo-server" quitWhileAccess
-    it "stop (SIGINT)  while access" $ run "/tmp/echo-server" $ stopWhileAccess sigINT
-    it "stop (SIGTERM) while access" $ run "/tmp/echo-server" $ stopWhileAccess sigTERM
-    it "restart (SIGHUP)" $ run "/tmp/echo-server" restartWhileAccess
-    it "upgrade (SIGUSR2)" $ run "/tmp/echo-server" upgradeWhileAccess
+spec = describe "graceful" $ do
+         it "build echo as echo" $ buildAsEchoServer "test/echo.hs"
+         it "simple access and quit (SIGQUIT)" $ run "/tmp/echo-server" $ simpleAccessAnd sigQUIT
+         it "simple access and stop (SIGINT)"  $ run "/tmp/echo-server" $ simpleAccessAnd sigINT
+         it "simple access and stop (SIGTERM)" $ run "/tmp/echo-server" $ simpleAccessAnd sigTERM
+         it "quit (SIGQUIT) while access" $ run "/tmp/echo-server" quitWhileAccess
+         it "stop (SIGINT)  while access" $ run "/tmp/echo-server" $ stopWhileAccess sigINT
+         it "stop (SIGTERM) while access" $ run "/tmp/echo-server" $ stopWhileAccess sigTERM
+         it "restart (SIGHUP)" $ run "/tmp/echo-server" restartWhileAccess
+         it "upgrade (SIGUSR2)" $ run "/tmp/echo-server" upgradeWhileAccess
 
 removeFileIfExist :: FilePath -> IO ()
 removeFileIfExist file = do
@@ -93,7 +92,7 @@ stopWhileAccess s = do
            replicateM_ 100 $ do
              sock `shouldEcho` "quitWhileAccess"
              threadDelay 1000
-  either (\_ -> True) (\_ -> False) res `shouldBe` True
+  either (const True) (const False) res `shouldBe` True
 
 restartWhileAccess :: IO ()
 restartWhileAccess = do
@@ -101,8 +100,7 @@ restartWhileAccess = do
             kill sigHUP
             sock `shouldEcho` "restart"
   res1 `shouldBe` Right ()
-  res2 <- tryIO $ access $ \sock -> do
-            sock `shouldEcho` "restart"
+  res2 <- tryIO $ access (`shouldEcho` "restart")
   res2 `shouldBe` Right ()
   kill sigQUIT
 
@@ -114,7 +112,6 @@ upgradeWhileAccess = do
             sock `shouldEcho` "restart"
   res1 `shouldBe` Right ()
   threadDelay 1000000
-  res2 <- tryIO $ access $ \sock -> do
-            sock `shouldDouble` "restart"
+  res2 <- tryIO $ access (`shouldDouble` "restart")
   res2 `shouldBe` Right ()
   kill sigQUIT

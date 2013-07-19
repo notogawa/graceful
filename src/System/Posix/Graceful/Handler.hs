@@ -5,7 +5,7 @@ module System.Posix.Graceful.Handler
     ) where
 
 import Control.Concurrent.STM ( atomically, TVar, newTVarIO, readTVar, modifyTVar' )
-import Control.Monad ( void )
+import Control.Monad ( void, unless )
 import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( getAnyProcessStatus, exitImmediately )
 import System.Posix.Signals ( Signal, signalProcess
@@ -53,7 +53,7 @@ waitAllProcess settings = do
                 remain <-atomically $ do
                             modifyTVar' (handlerSettingsProcessIDs settings) (filter (pid /=))
                             readTVar (handlerSettingsProcessIDs settings)
-                if null remain then return () else waitAllProcess settings
+                unless (null remain) $ waitAllProcess settings
 
 shutdownGracefully :: HandlerSettings -> IO ()
 shutdownGracefully settings = do

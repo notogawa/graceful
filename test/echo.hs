@@ -29,7 +29,7 @@ daemonize :: IO () -> IO ()
 daemonize application = do
   void $ setFileCreationMask 0
   void $ forkProcess $ do
-    void $ createSession
+    void createSession
     void $ forkProcess $ do
       changeWorkingDirectory "/"
       devnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
