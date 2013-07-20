@@ -10,9 +10,7 @@ import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( getAnyProcessStatus, exitImmediately )
 import System.Posix.Signals ( Signal, signalProcess
                             , Handler(..), installHandler
-                            , keyboardTermination, lostConnection
-                            , keyboardSignal, softwareTermination
-                            , userDefinedSignal2 )
+                            , sigQUIT, sigHUP, sigINT, sigTERM, sigUSR2 )
 import System.Posix.Types ( ProcessID )
 
 data HandlerSettings =
@@ -24,29 +22,28 @@ data HandlerSettings =
 
 resetHandlers :: HandlerSettings -> IO ()
 resetHandlers settings = do
-  void $ installHandler keyboardTermination (Catch $ handleSIGQUIT settings) Nothing
-  void $ installHandler lostConnection (Catch $ handleSIGHUP settings) Nothing
-  void $ installHandler keyboardSignal (Catch $ handleSIGINT settings) Nothing
-  void $ installHandler softwareTermination (Catch $ handleSIGTERM settings) Nothing
-  void $ installHandler userDefinedSignal2 (Catch $ handleSIGUSR2 settings) Nothing
+  void $ installHandler sigQUIT (CatchOnce $ handleSIGQUIT settings) Nothing
+  void $ installHandler sigHUP  (CatchOnce $ handleSIGHUP  settings) Nothing
+  void $ installHandler sigINT  (CatchOnce $ handleSIGINT  settings) Nothing
+  void $ installHandler sigTERM (CatchOnce $ handleSIGTERM settings) Nothing
+  void $ installHandler sigUSR2 (CatchOnce $ handleSIGUSR2 settings) Nothing
 
 defaultHandlers :: IO ()
 defaultHandlers = do
-  void $ installHandler keyboardTermination Default Nothing
-  void $ installHandler lostConnection Default Nothing
-  void $ installHandler keyboardSignal Default Nothing
-  void $ installHandler softwareTermination Default Nothing
-  void $ installHandler userDefinedSignal2 Default Nothing
+  void $ installHandler sigQUIT Default Nothing
+  void $ installHandler sigHUP  Default Nothing
+  void $ installHandler sigINT  Default Nothing
+  void $ installHandler sigTERM Default Nothing
+  void $ installHandler sigUSR2 Default Nothing
 
 broadcastSignal :: HandlerSettings -> Signal -> IO ()
 broadcastSignal settings s = do
-    pids <- atomically $ readTVar $ handlerSettingsProcessIDs settings
-    mapM_ (signalProcess s) pids
+  pids <- atomically $ readTVar $ handlerSettingsProcessIDs settings
+  mapM_ (signalProcess s) pids
 
 waitAllProcess :: HandlerSettings -> IO ()
 waitAllProcess settings = do
   status <- getAnyProcessStatus True False
-  -- appendFile "/tmp/log" $ shows status "\n"
   case status of
     Nothing -> return ()
     Just (pid, _s) -> do
@@ -57,20 +54,20 @@ waitAllProcess settings = do
 
 shutdownGracefully :: HandlerSettings -> IO ()
 shutdownGracefully settings = do
-  broadcastSignal settings keyboardTermination
+  broadcastSignal settings sigQUIT
   waitAllProcess settings
 
 -- fast shutdown
 handleSIGINT :: HandlerSettings -> IO ()
 handleSIGINT settings = do
-  broadcastSignal settings keyboardSignal
+  broadcastSignal settings sigINT
   waitAllProcess settings
   exitImmediately $ ExitFailure 130 -- SIGINT exit code
 
 -- fast shutdown
 handleSIGTERM :: HandlerSettings -> IO ()
 handleSIGTERM settings = do
-  broadcastSignal settings softwareTermination
+  broadcastSignal settings sigTERM
   waitAllProcess settings
   exitImmediately $ ExitFailure 143 -- SIGTERM exit code
 

@@ -11,8 +11,7 @@ import Network ( Socket )
 import Network.Socket ( close, accept, shutdown, ShutdownCmd(ShutdownBoth) )
 import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( exitImmediately )
-import System.Posix.Signals ( Handler(..), installHandler
-                            , keyboardTermination )
+import System.Posix.Signals ( Handler(..), installHandler, sigQUIT )
 
 data WorkerSettings resource =
     WorkerSettings { workerSettingsInitialize :: IO resource
@@ -28,7 +27,7 @@ workerProcess WorkerSettings { workerSettingsInitialize = initialize
                              , workerSettingsApplication = application
                              , workerSettingsFinalize = finalize
                              } sock = do
-  void $ installHandler keyboardTermination (CatchOnce $ close sock) Nothing
+  void $ installHandler sigQUIT (CatchOnce $ close sock) Nothing
   count <- newTVarIO (0 :: Int)
   void $ tryIO $ bracket initialize finalize $ \resource ->
       void $ forever $ do
