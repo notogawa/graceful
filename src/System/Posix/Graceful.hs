@@ -43,7 +43,7 @@ toWorkerSettings settings =
 graceful :: GracefulSettings a -> IO ()
 graceful settings = do
   quit <- newEmptyMVar
-  bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
+  result <- tryIO $ bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
     esock <- tryRecvSocket settings
     sock <- either (const $ listenPort settings) return esock
     let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
@@ -56,8 +56,10 @@ graceful settings = do
                                   , handlerSettingsLaunchWorkers = launch
                                   , handlerSettingsSpawnProcess = spawnProcess settings sock
                                   }
-    writeProcessId settings
-  void $ takeMVar quit
+  writeProcessId settings
+  case result of
+    Left err -> error $ show err
+    Right _ok -> void $ takeMVar quit
 
 listenPort :: GracefulSettings resource -> IO Socket
 listenPort = listenOn . PortNumber . gracefulSettingsPortNumber

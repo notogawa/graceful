@@ -33,8 +33,8 @@ waitStandby :: FilePath -> IO ()
 waitStandby path = do
   status <- tryIO $ readFile path
   case status of
-    Left _err -> waitStandby path
-    Right _ok -> threadDelay 1000
+    Left _err -> threadDelay 1000 >> waitStandby path
+    Right _ok -> return ()
 
 run :: String -> IO () -> IO ()
 run file action = do
