@@ -15,14 +15,14 @@ import Test.Hspec
 spec :: Spec
 spec = describe "graceful" $ do
          it "build echo as echo" $ buildAsEchoServer "test/echo.hs"
-         it "simple access and quit (SIGQUIT)" $ run "/tmp/echo-server" $ simpleAccessAnd sigQUIT
-         it "simple access and stop (SIGINT)"  $ run "/tmp/echo-server" $ simpleAccessAnd sigINT
-         it "simple access and stop (SIGTERM)" $ run "/tmp/echo-server" $ simpleAccessAnd sigTERM
-         it "quit (SIGQUIT) while access" $ run "/tmp/echo-server" quitWhileAccess
-         it "stop (SIGINT)  while access" $ run "/tmp/echo-server" $ stopWhileAccess sigINT
-         it "stop (SIGTERM) while access" $ run "/tmp/echo-server" $ stopWhileAccess sigTERM
-         it "restart (SIGHUP)" $ run "/tmp/echo-server" restartWhileAccess
-         it "upgrade (SIGUSR2)" $ run "/tmp/echo-server" upgradeWhileAccess
+         it "simple access and quit (SIGQUIT)" $ run "tmp/echo-server" $ simpleAccessAnd sigQUIT
+         it "simple access and stop (SIGINT)"  $ run "tmp/echo-server" $ simpleAccessAnd sigINT
+         it "simple access and stop (SIGTERM)" $ run "tmp/echo-server" $ simpleAccessAnd sigTERM
+         it "quit (SIGQUIT) while access" $ run "tmp/echo-server" quitWhileAccess
+         it "stop (SIGINT)  while access" $ run "tmp/echo-server" $ stopWhileAccess sigINT
+         it "stop (SIGTERM) while access" $ run "tmp/echo-server" $ stopWhileAccess sigTERM
+         it "restart (SIGHUP)" $ run "tmp/echo-server" restartWhileAccess
+         it "upgrade (SIGUSR2)" $ run "tmp/echo-server" upgradeWhileAccess
 
 removeFileIfExist :: FilePath -> IO ()
 removeFileIfExist file = do
@@ -38,13 +38,15 @@ waitStandby path = do
 
 run :: String -> IO () -> IO ()
 run file action = do
-  mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
+  cwd <- getCurrentDirectory
+  mapM_ (removeFileIfExist . ((cwd ++ "/" ++ file) ++)) [ ".sock", ".pid" ]
   rawSystem file [] `shouldReturn` ExitSuccess
   waitStandby $ file ++ ".pid"
   action
 
 kill :: Signal -> IO ()
-kill signal = readFile "/tmp/echo-server.pid" >>=
+kill signal = getCurrentDirectory >>=
+              readFile . (++ "/tmp/echo-server.pid") >>=
               signalProcess signal . read
 
 tryIO :: IO a -> IO (Either IOException a)
@@ -78,12 +80,17 @@ access action =
 
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
-  removeFileIfExist "/tmp/echo-server"
+  cwd <- getCurrentDirectory
+  removeFileIfExist (cwd ++ "/tmp/echo-server")
+  rawSystem "ghc" [ "--make", file
+                  , "-o", cwd ++ "/tmp/echo-server"
 #if __GLASGOW_HASKELL__ < 706
-  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-package-conf", "dist/package.conf.inplace" ] `shouldReturn` ExitSuccess
+                  , "-package-conf", "dist/package.conf.inplace"
 #else
-  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-package-db", "dist/package.conf.inplace" ] `shouldReturn` ExitSuccess
+                  , "-package-db",   "dist/package.conf.inplace"
 #endif
+                  ] `shouldReturn` ExitSuccess
+
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
 
