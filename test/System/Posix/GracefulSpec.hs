@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module System.Posix.GracefulSpec ( spec ) where
 
 import Control.Concurrent
@@ -61,9 +62,16 @@ shouldDouble sock str = echo sock str `shouldReturn` (str ++ str)
 simpleAccess :: IO ()
 simpleAccess = access (`shouldEcho` "simpleAccess")
 
+wrapClose :: Socket -> IO ()
+#if MIN_VERSION_network(2,4,0)
+wrapClose = close
+#else
+wrapClose = sClose
+#endif
+
 access :: (Socket -> IO ()) -> IO ()
 access action =
-    bracket (socket AF_INET Stream 0) close $ \sock -> do
+    bracket (socket AF_INET Stream 0) wrapClose $ \sock -> do
       addr <- inet_addr "127.0.0.1"
       connect sock $ SockAddrInet 8080 addr
       action sock
@@ -71,7 +79,7 @@ access action =
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
   removeFileIfExist "/tmp/echo-server"
-  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-isrc" ] `shouldReturn` ExitSuccess
+  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server" ] `shouldReturn` ExitSuccess
 
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s

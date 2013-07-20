@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module System.Posix.Graceful
     ( GracefulSettings(..)
     , graceful
@@ -8,8 +9,13 @@ import Control.Concurrent.STM ( newTVarIO )
 import Control.Exception ( IOException, bracket, bracket_, try )
 import Control.Monad ( replicateM, void, when )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
+#if MIN_VERSION_network(2,4,0)
+import Network.Socket ( close )
+#else
+import Network.Socket ( sClose )
+#endif
 import Network.Socket ( Socket(..), socket, mkSocket
-                      , connect, close, accept, shutdown, bindSocket, listen
+                      , connect, accept, shutdown, bindSocket, listen
                       , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
                       , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
 import System.Directory ( doesFileExist, removeFile )
@@ -64,7 +70,7 @@ listenPort = listenOn . PortNumber . gracefulSettingsPortNumber
 
 tryRecvSocket :: GracefulSettings resource -> IO (Either IOException Socket)
 tryRecvSocket settings =
-    tryIO $ bracket (socket AF_UNIX Stream 0) close $ \uds -> do
+    tryIO $ bracket (socket AF_UNIX Stream 0) wrapClose $ \uds -> do
       connect uds $ SockAddrUnix $ gracefulSettingsSockFile settings
       sock <- recvSock uds
       shutdown uds ShutdownBoth
@@ -85,11 +91,11 @@ spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
                               , gracefulSettingsBinary = binary
                               } sock = do
   clearUnixDomainSocket sockFile
-  bracket (socket AF_UNIX Stream 0) close $ \uds -> do
+  bracket (socket AF_UNIX Stream 0) wrapClose $ \uds -> do
     bindSocket uds $ SockAddrUnix sockFile
     listen uds 1
     void $ forkProcess $ executeFile binary False [] Nothing
-    bracket (accept uds) (close . fst) $ \(s, _) -> do
+    bracket (accept uds) (wrapClose . fst) $ \(s, _) -> do
       sendSock s sock
       shutdown s ShutdownBoth
     shutdown uds ShutdownBoth
@@ -111,3 +117,10 @@ recvSock uds = do
 
 launchWorkers :: Int -> IO () -> IO [ProcessID]
 launchWorkers n = replicateM n . forkProcess
+
+wrapClose :: Socket -> IO ()
+#if MIN_VERSION_network(2,4,0)
+wrapClose = close
+#else
+wrapClose = sClose
+#endif
