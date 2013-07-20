@@ -79,7 +79,7 @@ access action =
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
   removeFileIfExist "/tmp/echo-server"
-  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server" ] `shouldReturn` ExitSuccess
+  rawSystem "ghc" [ "--make", file, "-o", "/tmp/echo-server", "-package-db", "dist/package.conf.inplace" ] `shouldReturn` ExitSuccess
 
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
