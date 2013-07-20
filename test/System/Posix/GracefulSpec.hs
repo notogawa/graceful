@@ -10,19 +10,19 @@ import System.Cmd
 import System.Directory
 import System.Exit
 import System.Posix.Signals
+import System.Process hiding ( cwd )
 import Test.Hspec
 
 spec :: Spec
 spec = describe "graceful" $ do
-         it "build echo as echo" $ buildAsEchoServer "test/echo.hs"
-         it "simple access and quit (SIGQUIT)" $ run "tmp/echo-server" $ simpleAccessAnd sigQUIT
-         it "simple access and stop (SIGINT)"  $ run "tmp/echo-server" $ simpleAccessAnd sigINT
-         it "simple access and stop (SIGTERM)" $ run "tmp/echo-server" $ simpleAccessAnd sigTERM
-         it "quit (SIGQUIT) while access" $ run "tmp/echo-server" quitWhileAccess
-         it "stop (SIGINT)  while access" $ run "tmp/echo-server" $ stopWhileAccess sigINT
-         it "stop (SIGTERM) while access" $ run "tmp/echo-server" $ stopWhileAccess sigTERM
-         it "restart (SIGHUP)" $ run "tmp/echo-server" restartWhileAccess
-         it "upgrade (SIGUSR2)" $ run "tmp/echo-server" upgradeWhileAccess
+         it "simple access and quit (SIGQUIT)" $ run $ simpleAccessAnd sigQUIT
+         it "simple access and stop (SIGINT)"  $ run $ simpleAccessAnd sigINT
+         it "simple access and stop (SIGTERM)" $ run $ simpleAccessAnd sigTERM
+         it "quit (SIGQUIT) while access" $ run quitWhileAccess
+         it "stop (SIGINT)  while access" $ run $ stopWhileAccess sigINT
+         it "stop (SIGTERM) while access" $ run $ stopWhileAccess sigTERM
+         it "restart (SIGHUP)" $ run restartWhileAccess
+         it "upgrade (SIGUSR2)" $ run upgradeWhileAccess
 
 removeFileIfExist :: FilePath -> IO ()
 removeFileIfExist file = do
@@ -36,10 +36,12 @@ waitStandby path = do
     Left _err -> threadDelay 1000 >> waitStandby path
     Right _ok -> return ()
 
-run :: String -> IO () -> IO ()
-run file action = do
+run :: IO () -> IO ()
+run action = do
+  buildAsEchoServer "test/echo.hs"
   cwd <- getCurrentDirectory
-  mapM_ (removeFileIfExist . ((cwd ++ "/" ++ file) ++)) [ ".sock", ".pid" ]
+  let file = cwd ++ "/tmp/echo-server"
+  mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
   rawSystem file [] `shouldReturn` ExitSuccess
   waitStandby $ file ++ ".pid"
   action
@@ -78,18 +80,24 @@ access action =
       connect sock $ SockAddrInet 8080 addr
       action sock
 
+
+packageOption :: String
+#if __GLASGOW_HASKELL__ < 706
+packageOption = "-package-conf"
+#else
+packageOption = "-package-db"
+#endif
+
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
   cwd <- getCurrentDirectory
   removeFileIfExist (cwd ++ "/tmp/echo-server")
-  rawSystem "ghc" [ "--make", file
-                  , "-o", cwd ++ "/tmp/echo-server"
-#if __GLASGOW_HASKELL__ < 706
-                  , "-package-conf", "dist/package.conf.inplace"
-#else
-                  , "-package-db",   "dist/package.conf.inplace"
-#endif
-                  ] `shouldReturn` ExitSuccess
+  (code, _out, _err) <- readProcessWithExitCode "ghc"
+                        [ "--make", file
+                        , "-o", cwd ++ "/tmp/echo-server"
+                        , packageOption, "dist/package.conf.inplace"
+                        ] ""
+  code `shouldBe` ExitSuccess
 
 simpleAccessAnd :: Signal -> IO ()
 simpleAccessAnd s = simpleAccess >> kill s
@@ -127,9 +135,14 @@ upgradeWhileAccess = do
   buildAsEchoServer "test/double.hs"
   res1 <- tryIO $ access $ \sock -> do
             kill sigUSR2
-            sock `shouldEcho` "restart"
+            replicateM_ 100 $ do
+              sock `shouldEcho` "upgradeWhileAccess"
+              threadDelay 1000
   res1 `shouldBe` Right ()
   threadDelay 1000000
-  res2 <- tryIO $ access (`shouldDouble` "restart")
+  res2 <- tryIO $ access $ \sock ->
+            replicateM_ 100 $ do
+              sock `shouldDouble` "upgradeWhileAccess"
+              threadDelay 1000
   res2 `shouldBe` Right ()
   kill sigQUIT
