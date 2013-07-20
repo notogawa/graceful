@@ -4,6 +4,7 @@ module System.Posix.Graceful.Handler
     , defaultHandlers
     ) where
 
+import Control.Concurrent ( threadDelay )
 import Control.Concurrent.STM ( atomically, TVar, newTVarIO, readTVar, modifyTVar' )
 import Control.Monad ( void, unless )
 import System.Exit ( ExitCode(..) )
@@ -87,5 +88,6 @@ handleSIGHUP settings = do
 handleSIGUSR2 :: HandlerSettings -> IO ()
 handleSIGUSR2 settings = do
   handlerSettingsSpawnProcess settings
+  threadDelay 5000000 -- 5s
   shutdownGracefully settings
   handlerSettingsQuitProcess settings

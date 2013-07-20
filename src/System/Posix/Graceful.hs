@@ -12,7 +12,7 @@ import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
                               , connect, close, accept, shutdown, bindSocket, listen
                               , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
                               , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
-import System.Directory ( doesFileExist, removeFile )
+import System.Directory ( doesFileExist, removeFile, renameFile )
 import System.Posix.Process ( getProcessID, forkProcess, executeFile )
 import System.Posix.Signals ( blockSignals, unblockSignals, fullSignalSet )
 import System.Posix.Types ( ProcessID )
@@ -74,8 +74,7 @@ tryRecvSocket settings =
 
 writeProcessId :: GracefulSettings resource -> IO ()
 writeProcessId settings =
-    getProcessID >>=
-    writeFile (gracefulSettingsPidFile settings) . show
+    getProcessID >>= writeFile (gracefulSettingsPidFile settings) . show
 
 clearUnixDomainSocket :: FilePath -> IO ()
 clearUnixDomainSocket sockFile = do
@@ -85,7 +84,10 @@ clearUnixDomainSocket sockFile = do
 spawnProcess :: GracefulSettings resource -> Socket -> IO ()
 spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
                               , gracefulSettingsBinary = binary
+                              , gracefulSettingsPidFile = pidFile
                               } sock = do
+  exist <- doesFileExist pidFile
+  when exist $ renameFile pidFile (pidFile ++ ".old")
   clearUnixDomainSocket sockFile
   bracket (socket AF_UNIX Stream 0) close $ \uds -> do
     bindSocket uds $ SockAddrUnix sockFile
