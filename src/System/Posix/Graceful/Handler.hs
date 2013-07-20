@@ -9,7 +9,7 @@ import Control.Monad ( void, unless )
 import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( getAnyProcessStatus, exitImmediately )
 import System.Posix.Signals ( Signal, signalProcess
-                            , Handler(..), installHandler
+                            , Handler(..), installHandler, fullSignalSet
                             , sigQUIT, sigHUP, sigINT, sigTERM, sigUSR2 )
 import System.Posix.Types ( ProcessID )
 
@@ -22,11 +22,11 @@ data HandlerSettings =
 
 resetHandlers :: HandlerSettings -> IO ()
 resetHandlers settings = do
-  void $ installHandler sigQUIT (CatchOnce $ handleSIGQUIT settings) Nothing
-  void $ installHandler sigHUP  (CatchOnce $ handleSIGHUP  settings) Nothing
-  void $ installHandler sigINT  (CatchOnce $ handleSIGINT  settings) Nothing
-  void $ installHandler sigTERM (CatchOnce $ handleSIGTERM settings) Nothing
-  void $ installHandler sigUSR2 (CatchOnce $ handleSIGUSR2 settings) Nothing
+  void $ installHandler sigQUIT (CatchOnce $ handleSIGQUIT settings) (Just fullSignalSet)
+  void $ installHandler sigHUP  (CatchOnce $ handleSIGHUP  settings) (Just fullSignalSet)
+  void $ installHandler sigINT  (CatchOnce $ handleSIGINT  settings) (Just fullSignalSet)
+  void $ installHandler sigTERM (CatchOnce $ handleSIGTERM settings) (Just fullSignalSet)
+  void $ installHandler sigUSR2 (CatchOnce $ handleSIGUSR2 settings) (Just fullSignalSet)
 
 defaultHandlers :: IO ()
 defaultHandlers = do

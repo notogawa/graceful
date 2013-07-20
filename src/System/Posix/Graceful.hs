@@ -5,7 +5,7 @@ module System.Posix.Graceful
 
 import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar )
 import Control.Concurrent.STM ( newTVarIO )
-import Control.Exception ( IOException, bracket, try )
+import Control.Exception ( IOException, bracket, bracket_, try )
 import Control.Monad ( replicateM, void, when )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
 import Network.Socket ( Socket(..), socket, mkSocket
@@ -14,6 +14,7 @@ import Network.Socket ( Socket(..), socket, mkSocket
                       , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
 import System.Directory ( doesFileExist, removeFile )
 import System.Posix.Process ( getProcessID, forkProcess, executeFile )
+import System.Posix.Signals ( blockSignals, unblockSignals, fullSignalSet )
 import System.Posix.Types ( ProcessID )
 
 import System.Posix.Graceful.Handler
@@ -41,18 +42,21 @@ toWorkerSettings settings =
 -- | Make server application enable shutdown/restart gracefully
 graceful :: GracefulSettings a -> IO ()
 graceful settings = do
-  esock <- tryRecvSocket settings
-  sock <- either (const $ listenPort settings) return esock
-  let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
-      launch = launchWorkers (gracefulSettingsWorkerCount settings) worker
-  pids <- launch >>= newTVarIO
   quit <- newEmptyMVar
-  resetHandlers HandlerSettings { handlerSettingsProcessIDs = pids
-                                , handlerSettingsQuitProcess = putMVar quit True
-                                , handlerSettingsLaunchWorkers = launch
-                                , handlerSettingsSpawnProcess = spawnProcess settings sock
-                                }
-  writeProcessId settings
+  bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
+    esock <- tryRecvSocket settings
+    sock <- either (const $ listenPort settings) return esock
+    let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
+        launch = launchWorkers (gracefulSettingsWorkerCount settings) $ do
+                   unblockSignals fullSignalSet
+                   worker
+    pids <- launch >>= newTVarIO
+    resetHandlers HandlerSettings { handlerSettingsProcessIDs = pids
+                                  , handlerSettingsQuitProcess = putMVar quit True
+                                  , handlerSettingsLaunchWorkers = launch
+                                  , handlerSettingsSpawnProcess = spawnProcess settings sock
+                                  }
+    writeProcessId settings
   void $ takeMVar quit
 
 listenPort :: GracefulSettings resource -> IO Socket
