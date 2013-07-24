@@ -12,18 +12,18 @@ import System.Posix.Signals
 import System.Posix.Graceful
 
 main :: IO ()
-main = getCurrentDirectory >>= daemonize . graceful . settings
+main = daemonize $ graceful settings
     where
-      settings cwd = GracefulSettings
-                     { gracefulSettingsPortNumber = 8080
-                     , gracefulSettingsWorkerCount = 4
-                     , gracefulSettingsInitialize = return ()
-                     , gracefulSettingsApplication = application
-                     , gracefulSettingsFinalize = const $ return ()
-                     , gracefulSettingsSockFile = cwd ++ "/tmp/echo-server.sock"
-                     , gracefulSettingsPidFile = cwd ++ "/tmp/echo-server.pid"
-                     , gracefulSettingsBinary = cwd ++ "/tmp/echo-server"
-                     }
+      settings = GracefulSettings
+                 { gracefulSettingsPortNumber = 8080
+                 , gracefulSettingsWorkerCount = 4
+                 , gracefulSettingsInitialize = return ()
+                 , gracefulSettingsApplication = application
+                 , gracefulSettingsFinalize = const $ return ()
+                 , gracefulSettingsSockFile = "/tmp/echo-server.sock"
+                 , gracefulSettingsPidFile = "/tmp/echo-server.pid"
+                 , gracefulSettingsBinary = "/tmp/echo-server"
+                 }
       application sock _ = forever $ recv sock 1024 >>= send sock
 
 daemonize :: IO () -> IO ()
@@ -32,7 +32,7 @@ daemonize application = do
   void $ forkProcess $ do
     void createSession
     void $ forkProcess $ do
-      -- changeWorkingDirectory "/"
+      changeWorkingDirectory "/"
       devnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags
       let sendTo fd' fd = closeFd fd >> dupTo fd' fd
       mapM_ (sendTo devnull) [ stdInput, stdOutput, stdError ]

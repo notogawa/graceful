@@ -12,7 +12,7 @@ import System.Directory
 import System.Exit
 import System.Posix.Signals
 import System.Posix.Types
-import System.Process hiding ( cwd )
+import System.Process
 import Test.Hspec
 
 spec :: Spec
@@ -52,8 +52,7 @@ waitProcessDecreaseTo n = do
 run :: IO () -> IO ()
 run action = do
   buildAsEchoServer "test/echo.hs"
-  cwd <- getCurrentDirectory
-  let file = cwd ++ "/tmp/echo-server"
+  let file = "/tmp/echo-server"
   mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
   rawSystem file [] `shouldReturn` ExitSuccess
   waitStandby $ file ++ ".pid"
@@ -61,8 +60,7 @@ run action = do
   waitProcessDecreaseTo 0
 
 kill :: Signal -> IO ()
-kill signal = getCurrentDirectory >>=
-              readFile . (++ "/tmp/echo-server.pid") >>=
+kill signal = readFile "/tmp/echo-server.pid" >>=
               signalProcess signal . read
 
 tryIO :: IO a -> IO (Either IOException a)
@@ -104,11 +102,10 @@ packageOption = "-package-db"
 
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
-  cwd <- getCurrentDirectory
-  removeFileIfExist (cwd ++ "/tmp/echo-server")
+  removeFileIfExist "/tmp/echo-server"
   (code, _out, _err) <- readProcessWithExitCode "ghc"
                         [ "--make", file
-                        , "-o", cwd ++ "/tmp/echo-server"
+                        , "-o", "/tmp/echo-server"
                         , packageOption, "dist/package.conf.inplace"
                         ] ""
   code `shouldBe` ExitSuccess
