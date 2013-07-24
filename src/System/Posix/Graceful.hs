@@ -1,3 +1,13 @@
+-- |
+-- Module      : System.Posix.Graceful
+-- Copyright   : 2013 Noriyuki OHKAWA
+-- License     : BSD3
+--
+-- Maintainer  : n.ohkawa@gmail.com
+-- Stability   : experimental
+-- Portability : unknown
+--
+-- Provides function to make process graceful.
 module System.Posix.Graceful
     ( GracefulSettings(..)
     , graceful
@@ -5,7 +15,7 @@ module System.Posix.Graceful
 
 import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar )
 import Control.Concurrent.STM ( newTVarIO )
-import Control.Exception ( IOException, bracket, bracket_, try )
+import Control.Exception ( IOException, bracket, bracket_, try, throwIO )
 import Control.Monad ( replicateM, void, when )
 import Network ( Socket, listenOn, PortID(..), PortNumber )
 import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
@@ -22,14 +32,14 @@ import System.Posix.Graceful.Worker
 
 -- | Server settings
 data GracefulSettings resource =
-    GracefulSettings { gracefulSettingsPortNumber :: PortNumber
-                     , gracefulSettingsWorkerCount :: Int
-                     , gracefulSettingsInitialize :: IO resource
-                     , gracefulSettingsApplication :: Socket -> resource -> IO ()
-                     , gracefulSettingsFinalize :: resource -> IO ()
-                     , gracefulSettingsSockFile :: FilePath
-                     , gracefulSettingsPidFile :: FilePath
-                     , gracefulSettingsBinary :: FilePath
+    GracefulSettings { gracefulSettingsPortNumber :: PortNumber -- ^ Listen port
+                     , gracefulSettingsWorkerCount :: Int -- ^ Prefork worker count
+                     , gracefulSettingsInitialize :: IO resource -- ^ Worker initializer to initialize user defined resource
+                     , gracefulSettingsApplication :: Socket -> resource -> IO () -- ^ Worker action
+                     , gracefulSettingsFinalize :: resource -> IO () -- ^ Worker finalizer to finalize user defined resource
+                     , gracefulSettingsSockFile :: FilePath -- ^ Unix domain socket file
+                     , gracefulSettingsPidFile :: FilePath -- ^ The file to which the server records the process id
+                     , gracefulSettingsBinary :: FilePath -- ^ The binary file to upgrade
                      }
 
 toWorkerSettings :: GracefulSettings resource -> WorkerSettings resource
@@ -40,7 +50,7 @@ toWorkerSettings settings =
                    }
 
 -- | Make server application enable shutdown/restart gracefully
-graceful :: GracefulSettings a -> IO ()
+graceful :: GracefulSettings resource -> IO ()
 graceful settings = do
   quit <- newEmptyMVar
   result <- tryIO $ bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
@@ -57,9 +67,7 @@ graceful settings = do
                                   , handlerSettingsSpawnProcess = spawnProcess settings sock
                                   }
   writeProcessId settings
-  case result of
-    Left err -> error $ show err
-    Right _ok -> void $ takeMVar quit
+  either throwIO (const $ void $ takeMVar quit) result
 
 listenPort :: GracefulSettings resource -> IO Socket
 listenPort = listenOn . PortNumber . gracefulSettingsPortNumber

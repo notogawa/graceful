@@ -1,3 +1,13 @@
+-- |
+-- Module      : System.Posix.Graceful.Worker
+-- Copyright   : 2013 Noriyuki OHKAWA
+-- License     : BSD3
+--
+-- Maintainer  : n.ohkawa@gmail.com
+-- Stability   : experimental
+-- Portability : unknown
+--
+-- Worker process
 module System.Posix.Graceful.Worker
     ( WorkerSettings(..)
     , workerProcess
@@ -13,6 +23,7 @@ import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( exitImmediately )
 import System.Posix.Signals ( Handler(..), installHandler, sigQUIT )
 
+-- | Worker process settings
 data WorkerSettings resource =
     WorkerSettings { workerSettingsInitialize :: IO resource
                    , workerSettingsApplication :: Socket -> resource -> IO ()
@@ -22,6 +33,7 @@ data WorkerSettings resource =
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
 
+-- | Worker process action
 workerProcess :: WorkerSettings resource -> Socket -> IO ()
 workerProcess WorkerSettings { workerSettingsInitialize = initialize
                              , workerSettingsApplication = application

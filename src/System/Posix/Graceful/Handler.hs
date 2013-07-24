@@ -1,3 +1,13 @@
+-- |
+-- Module      : System.Posix.Graceful.Handler
+-- Copyright   : 2013 Noriyuki OHKAWA
+-- License     : BSD3
+--
+-- Maintainer  : n.ohkawa@gmail.com
+-- Stability   : experimental
+-- Portability : unknown
+--
+-- Signal handlers
 module System.Posix.Graceful.Handler
     ( HandlerSettings(..)
     , resetHandlers
@@ -14,6 +24,7 @@ import System.Posix.Signals ( Signal, signalProcess
                             , sigQUIT, sigHUP, sigINT, sigTERM, sigUSR2 )
 import System.Posix.Types ( ProcessID )
 
+-- | Signal handler settings
 data HandlerSettings =
     HandlerSettings { handlerSettingsProcessIDs :: TVar [ProcessID]
                     , handlerSettingsQuitProcess :: IO ()
@@ -21,6 +32,7 @@ data HandlerSettings =
                     , handlerSettingsSpawnProcess :: IO ()
                     }
 
+-- | Reset handlers by settings
 resetHandlers :: HandlerSettings -> IO ()
 resetHandlers settings = do
   void $ installHandler sigQUIT (CatchOnce $ handleSIGQUIT settings) (Just fullSignalSet)
@@ -29,6 +41,7 @@ resetHandlers settings = do
   void $ installHandler sigTERM (CatchOnce $ handleSIGTERM settings) (Just fullSignalSet)
   void $ installHandler sigUSR2 (CatchOnce $ handleSIGUSR2 settings) (Just fullSignalSet)
 
+-- | Set default handlers
 defaultHandlers :: IO ()
 defaultHandlers = do
   void $ installHandler sigQUIT Default Nothing
