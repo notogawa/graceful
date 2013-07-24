@@ -26,7 +26,7 @@ main = daemonize $ graceful settings
       application sock _ = do
         pid <- getProcessID
         threadDelay 1000000
-        let content = shows pid " test\n"
+        let content = shows pid "\n"
         mapM_ (send sock)
                   [ "HTTP/1.1 200 OK\r\n"
                   , "Connection: close\r\n"
@@ -40,7 +40,7 @@ daemonize :: IO () -> IO ()
 daemonize application = do
   void $ setFileCreationMask 0
   void $ forkProcess $ do
-    void $ createSession
+    void createSession
     void $ forkProcess $ do
       changeWorkingDirectory "/"
       devnull <- openFd "/dev/null" ReadWrite Nothing defaultFileFlags

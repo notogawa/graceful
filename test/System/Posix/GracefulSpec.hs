@@ -135,7 +135,7 @@ restartKeepWorkers = do
   waitProcessDecreaseTo 5
   pids' <- ps
   length pids' `shouldBe` 5 -- master + 4 worker
-  length (intersect pids pids') `shouldBe` 1 -- restarted workers
+  length (pids `intersect` pids') `shouldBe` 1 -- restarted workers
   kill sigQUIT
 
 upgradeKeepWorkers :: IO ()
@@ -146,7 +146,7 @@ upgradeKeepWorkers = do
   waitProcessDecreaseTo 5
   pids' <- ps
   length pids' `shouldBe` 5 -- master + 4 worker
-  length (intersect pids pids') `shouldBe` 0 -- upgraded master & workers
+  length (pids `intersect` pids') `shouldBe` 0 -- upgraded master & workers
   kill sigQUIT
 
 left :: Either a b -> Bool
