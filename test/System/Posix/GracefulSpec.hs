@@ -20,14 +20,16 @@ spec = describe "graceful" $ do
          it "prefork workers" $ run preforkWorkers
          it "restart keep workers > 0" $ run restartKeepWorkers
          it "upgrade keep workers > 0" $ run upgradeKeepWorkers
+         it "abort upgrade keep workers > 0" $ run abortUpgradeKeepWorkers
          it "simple access and quit (SIGQUIT)" $ run $ simpleAccessAnd sigQUIT
          it "simple access and stop (SIGINT)"  $ run $ simpleAccessAnd sigINT
          it "simple access and stop (SIGTERM)" $ run $ simpleAccessAnd sigTERM
          it "quit (SIGQUIT) while access" $ run quitWhileAccess
          it "stop (SIGINT)  while access" $ run $ stopWhileAccess sigINT
          it "stop (SIGTERM) while access" $ run $ stopWhileAccess sigTERM
-         it "restart (SIGHUP)" $ run restartWhileAccess
-         it "upgrade (SIGUSR2)" $ run upgradeWhileAccess
+         it "restart (SIGHUP) while access" $ run restartWhileAccess
+         it "upgrade (SIGUSR2) while access" $ run upgradeWhileAccess
+         it "abort upgrade while access" $ run abortUpgradeWhileAccess
 
 removeFileIfExist :: FilePath -> IO ()
 removeFileIfExist file = do
@@ -40,6 +42,14 @@ waitStandby path = do
   case status of
     Left _err -> threadDelay 1000 >> waitStandby path
     Right _ok -> return ()
+
+waitProcessIncreaseTo :: Int -> IO ()
+waitProcessIncreaseTo n = do
+  procs <- fmap length ps
+  procs `shouldSatisfy` (<= n)
+  if procs < n
+    then threadDelay 1000 >> waitProcessIncreaseTo n
+    else procs `shouldBe` n
 
 waitProcessDecreaseTo :: Int -> IO ()
 waitProcessDecreaseTo n = do
@@ -62,6 +72,10 @@ run action = do
 kill :: Signal -> IO ()
 kill signal = readFile "/tmp/echo-server.pid" >>=
               signalProcess signal . read
+
+killold :: Signal -> IO ()
+killold signal = readFile "/tmp/echo-server.pid.old" >>=
+                 signalProcess signal . read
 
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
@@ -140,10 +154,26 @@ upgradeKeepWorkers = do
   pids <- ps
   length pids `shouldBe` 5 -- master + 4 worker
   kill sigUSR2
+  waitProcessIncreaseTo 10
+  killold sigQUIT
   waitProcessDecreaseTo 5
   pids' <- ps
   length pids' `shouldBe` 5 -- master + 4 worker
   length (pids `intersect` pids') `shouldBe` 0 -- upgraded master & workers
+  kill sigQUIT
+
+abortUpgradeKeepWorkers :: IO ()
+abortUpgradeKeepWorkers = do
+  pids <- ps
+  length pids `shouldBe` 5 -- master + 4 worker
+  kill sigUSR2
+  waitProcessIncreaseTo 10
+  kill sigQUIT
+  renameFile "/tmp/echo-server.pid.old" "/tmp/echo-server.pid"
+  waitProcessDecreaseTo 5
+  pids' <- ps
+  length pids' `shouldBe` 5 -- master + 4 worker
+  length (pids `intersect` pids') `shouldBe` 5 -- abort upgrade
   kill sigQUIT
 
 left :: Either a b -> Bool
@@ -192,9 +222,29 @@ upgradeWhileAccess = do
     replicateM_ 10 $ do
       sock `shouldEcho` "upgradeWhileAccess"
       threadDelay 1000
+  waitProcessIncreaseTo 10
+  killold sigQUIT
   waitProcessDecreaseTo 5
   access $ \sock ->
       replicateM_ 10 $ do
         sock `shouldDouble` "upgradeWhileAccess"
+        threadDelay 1000
+  kill sigQUIT
+
+abortUpgradeWhileAccess :: IO ()
+abortUpgradeWhileAccess = do
+  buildAsEchoServer "test/double.hs"
+  access $ \sock -> do
+    kill sigUSR2
+    replicateM_ 10 $ do
+      sock `shouldEcho` "upgradeWhileAccess"
+      threadDelay 1000
+  waitProcessIncreaseTo 10
+  kill sigQUIT
+  renameFile "/tmp/echo-server.pid.old" "/tmp/echo-server.pid"
+  waitProcessDecreaseTo 5
+  access $ \sock ->
+      replicateM_ 10 $ do
+        sock `shouldEcho` "upgradeWhileAccess"
         threadDelay 1000
   kill sigQUIT

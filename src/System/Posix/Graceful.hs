@@ -23,9 +23,10 @@ import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
                               , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
                               , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
 import System.Directory ( doesFileExist, removeFile, renameFile )
-import System.Posix.Process ( getProcessID, forkProcess, executeFile )
+import System.Posix.IO ( dup )
+import System.Posix.Process ( getProcessID, forkProcess, executeFile, getProcessStatus )
 import System.Posix.Signals ( blockSignals, unblockSignals, fullSignalSet )
-import System.Posix.Types ( ProcessID )
+import System.Posix.Types ( ProcessID, Fd(Fd) )
 
 import System.Posix.Graceful.Handler
 import System.Posix.Graceful.Worker
@@ -100,18 +101,20 @@ spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
   bracket (socket AF_UNIX Stream 0) close $ \uds -> do
     bindSocket uds $ SockAddrUnix sockFile
     listen uds 1
-    void $ forkProcess $ executeFile binary False [] Nothing
+    pid <- forkProcess $ executeFile binary False [] Nothing
     bracket (accept uds) (close . fst) $ \(s, _) -> do
       sendSock s sock
       shutdown s ShutdownBoth
     shutdown uds ShutdownBoth
+    void $ getProcessStatus True False pid
 
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
 
 sendSock :: Socket -> Socket -> IO ()
 sendSock uds sock = do
-  sendFd uds $ fdSocket sock
+  Fd fd <- dup $ Fd $ fdSocket sock
+  sendFd uds fd
   let MkSocket _ family socktype protocol _ = sock
   void $ send uds $ show (family, socktype, protocol)
 

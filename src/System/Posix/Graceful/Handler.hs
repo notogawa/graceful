@@ -101,6 +101,5 @@ handleSIGHUP settings = do
 handleSIGUSR2 :: HandlerSettings -> IO ()
 handleSIGUSR2 settings = do
   handlerSettingsSpawnProcess settings
-  threadDelay 5000000 -- 5s
-  shutdownGracefully settings
-  handlerSettingsQuitProcess settings
+  -- threadDelay 5000000 -- 5s
+  resetHandlers settings
