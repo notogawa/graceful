@@ -12,21 +12,21 @@ import System.Posix.Signals
 import System.Posix.Graceful
 
 main :: IO ()
-main = daemonize $ graceful settings
+main = daemonize $ graceful settings worker
     where
       settings = GracefulSettings
                  { gracefulSettingsListen = listenOn $ PortNumber 8080
                  , gracefulSettingsWorkerCount = 4
-                 , gracefulSettingsInitialize = return ()
-                 , gracefulSettingsApplication = application
-                 , gracefulSettingsFinalize = const $ return ()
                  , gracefulSettingsSockFile = "/tmp/sample.sock"
                  , gracefulSettingsPidFile = "/tmp/sample.pid"
                  , gracefulSettingsBinary = "/tmp/sample"
                  }
+      worker = GracefulWorker { gracefulWorkerInitialize = return ()
+                              , gracefulWorkerApplication = application
+                              , gracefulWorkerFinalize = const $ return ()
+                              }
       application sock _ = do
         pid <- getProcessID
-        threadDelay 1000000
         let content = shows pid "\n"
         mapM_ (send sock)
                   [ "HTTP/1.1 200 OK\r\n"

@@ -10,6 +10,7 @@
 -- Provides function to make process graceful.
 module System.Posix.Graceful
     ( GracefulSettings(..)
+    , GracefulWorker(..)
     , graceful
     ) where
 
@@ -31,35 +32,26 @@ import System.Posix.Graceful.Handler
 import System.Posix.Graceful.Worker
 
 -- | Server settings
-data GracefulSettings resource =
-    GracefulSettings { gracefulSettingsListen :: IO Socket -- ^ Listen socket
-                     , gracefulSettingsWorkerCount :: Int -- ^ Prefork worker count
-                     , gracefulSettingsInitialize :: IO resource -- ^ Worker initializer to initialize user defined resource
-                     , gracefulSettingsApplication :: Socket -> resource -> IO () -- ^ Worker action
-                     , gracefulSettingsFinalize :: resource -> IO () -- ^ Worker finalizer to finalize user defined resource
-                     , gracefulSettingsSockFile :: FilePath -- ^ Unix domain socket file
-                     , gracefulSettingsPidFile :: FilePath -- ^ The file to which the server records the process id
-                     , gracefulSettingsBinary :: FilePath -- ^ The binary file to upgrade
-                     }
-
-toWorkerSettings :: GracefulSettings resource -> WorkerSettings resource
-toWorkerSettings settings =
-    WorkerSettings { workerSettingsInitialize = gracefulSettingsInitialize settings
-                   , workerSettingsApplication = gracefulSettingsApplication settings
-                   , workerSettingsFinalize = gracefulSettingsFinalize settings
-                   }
+data GracefulSettings =
+    GracefulSettings
+    { gracefulSettingsListen :: IO Socket -- ^ Listen socket
+    , gracefulSettingsWorkerCount :: Int -- ^ Prefork worker count
+    , gracefulSettingsSockFile :: FilePath -- ^ Unix domain socket file
+    , gracefulSettingsPidFile :: FilePath -- ^ The file to which the server records the process id
+    , gracefulSettingsBinary :: FilePath -- ^ The binary file to upgrade
+    }
 
 -- | Make server application enable shutdown/restart gracefully
-graceful :: GracefulSettings resource -> IO ()
-graceful settings = do
+graceful :: GracefulSettings -> GracefulWorker -> IO ()
+graceful settings worker = do
   quit <- newEmptyMVar
   result <- tryIO $ bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
     esock <- tryRecvSocket settings
     sock <- either (const $ gracefulSettingsListen settings) return esock
-    let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
-        launch = launchWorkers (gracefulSettingsWorkerCount settings) $ do
+    let launch = launchWorkers (gracefulSettingsWorkerCount settings) $ do
                    unblockSignals fullSignalSet
-                   worker
+                   defaultHandlers
+                   workerProcess worker sock
     pids <- launch >>= newTVarIO
     resetHandlers HandlerSettings { handlerSettingsProcessIDs = pids
                                   , handlerSettingsQuitProcess = putMVar quit True
@@ -69,7 +61,7 @@ graceful settings = do
   writeProcessId settings
   either throwIO (const $ void $ takeMVar quit) result
 
-tryRecvSocket :: GracefulSettings resource -> IO (Either IOException Socket)
+tryRecvSocket :: GracefulSettings -> IO (Either IOException Socket)
 tryRecvSocket settings =
     tryIO $ bracket (socket AF_UNIX Stream 0) close $ \uds -> do
       connect uds $ SockAddrUnix $ gracefulSettingsSockFile settings
@@ -77,7 +69,7 @@ tryRecvSocket settings =
       shutdown uds ShutdownBoth
       return sock
 
-writeProcessId :: GracefulSettings resource -> IO ()
+writeProcessId :: GracefulSettings -> IO ()
 writeProcessId settings =
     getProcessID >>= writeFile (gracefulSettingsPidFile settings) . show
 
@@ -86,7 +78,7 @@ clearUnixDomainSocket sockFile = do
   exist <- doesFileExist sockFile
   when exist $ removeFile sockFile
 
-spawnProcess :: GracefulSettings resource -> Socket -> IO ()
+spawnProcess :: GracefulSettings -> Socket -> IO ()
 spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
                               , gracefulSettingsBinary = binary
                               , gracefulSettingsPidFile = pidFile

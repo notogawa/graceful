@@ -13,18 +13,19 @@ import System.Posix.Signals
 import System.Posix.Graceful
 
 main :: IO ()
-main = daemonize $ graceful settings
+main = daemonize $ graceful settings worker
     where
       settings = GracefulSettings
                  { gracefulSettingsListen = listenOn $ PortNumber 8080
                  , gracefulSettingsWorkerCount = 4
-                 , gracefulSettingsInitialize = return ()
-                 , gracefulSettingsApplication = application
-                 , gracefulSettingsFinalize = const $ return ()
                  , gracefulSettingsSockFile = "/tmp/echo-server.sock"
                  , gracefulSettingsPidFile = "/tmp/echo-server.pid"
                  , gracefulSettingsBinary = "/tmp/echo-server"
                  }
+      worker = GracefulWorker { gracefulWorkerInitialize = return ()
+                              , gracefulWorkerApplication = application
+                              , gracefulWorkerFinalize = const $ return ()
+                              }
       application sock _ = forever $ recv sock 1024 >>= send sock . (\x -> x ++ x)
 
 daemonize :: IO () -> IO ()

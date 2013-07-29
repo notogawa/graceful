@@ -1,3 +1,4 @@
+{-# LANGUAGE ExistentialQuantification #-}
 -- |
 -- Module      : System.Posix.Graceful.Worker
 -- Copyright   : 2013 Noriyuki OHKAWA
@@ -9,7 +10,7 @@
 --
 -- Worker process
 module System.Posix.Graceful.Worker
-    ( WorkerSettings(..)
+    ( GracefulWorker(..)
     , workerProcess
     ) where
 
@@ -24,20 +25,20 @@ import System.Posix.Process ( exitImmediately )
 import System.Posix.Signals ( Handler(..), installHandler, sigQUIT )
 
 -- | Worker process settings
-data WorkerSettings resource =
-    WorkerSettings { workerSettingsInitialize :: IO resource
-                   , workerSettingsApplication :: Socket -> resource -> IO ()
-                   , workerSettingsFinalize :: resource -> IO ()
+data GracefulWorker = forall resource .
+    GracefulWorker { gracefulWorkerInitialize :: IO resource
+                   , gracefulWorkerApplication :: Socket -> resource -> IO ()
+                   , gracefulWorkerFinalize :: resource -> IO ()
                    }
 
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
 
 -- | Worker process action
-workerProcess :: WorkerSettings resource -> Socket -> IO ()
-workerProcess WorkerSettings { workerSettingsInitialize = initialize
-                             , workerSettingsApplication = application
-                             , workerSettingsFinalize = finalize
+workerProcess :: GracefulWorker -> Socket -> IO ()
+workerProcess GracefulWorker { gracefulWorkerInitialize = initialize
+                             , gracefulWorkerApplication = application
+                             , gracefulWorkerFinalize = finalize
                              } sock = do
   void $ installHandler sigQUIT (CatchOnce $ close sock) Nothing
   count <- newTVarIO (0 :: Int)
