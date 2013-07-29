@@ -1,3 +1,4 @@
+import Network
 import Network.Socket ( send )
 import Control.Concurrent
 import Control.Monad
@@ -14,7 +15,7 @@ main :: IO ()
 main = daemonize $ graceful settings
     where
       settings = GracefulSettings
-                 { gracefulSettingsPortNumber = 8080
+                 { gracefulSettingsListen = listenOn $ PortNumber 8080
                  , gracefulSettingsWorkerCount = 4
                  , gracefulSettingsInitialize = return ()
                  , gracefulSettingsApplication = application

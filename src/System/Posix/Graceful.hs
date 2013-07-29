@@ -17,7 +17,6 @@ import Control.Concurrent ( newEmptyMVar, putMVar, takeMVar )
 import Control.Concurrent.STM ( newTVarIO )
 import Control.Exception ( IOException, bracket, bracket_, try, throwIO )
 import Control.Monad ( replicateM, void, when )
-import Network ( Socket, listenOn, PortID(..), PortNumber )
 import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
                               , connect, close, accept, shutdown, bindSocket, listen
                               , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
@@ -33,7 +32,7 @@ import System.Posix.Graceful.Worker
 
 -- | Server settings
 data GracefulSettings resource =
-    GracefulSettings { gracefulSettingsPortNumber :: PortNumber -- ^ Listen port
+    GracefulSettings { gracefulSettingsListen :: IO Socket -- ^ Listen socket
                      , gracefulSettingsWorkerCount :: Int -- ^ Prefork worker count
                      , gracefulSettingsInitialize :: IO resource -- ^ Worker initializer to initialize user defined resource
                      , gracefulSettingsApplication :: Socket -> resource -> IO () -- ^ Worker action
@@ -56,7 +55,7 @@ graceful settings = do
   quit <- newEmptyMVar
   result <- tryIO $ bracket_ (blockSignals fullSignalSet) (unblockSignals fullSignalSet) $ do
     esock <- tryRecvSocket settings
-    sock <- either (const $ listenPort settings) return esock
+    sock <- either (const $ gracefulSettingsListen settings) return esock
     let worker = defaultHandlers >> workerProcess (toWorkerSettings settings) sock
         launch = launchWorkers (gracefulSettingsWorkerCount settings) $ do
                    unblockSignals fullSignalSet
@@ -69,9 +68,6 @@ graceful settings = do
                                   }
   writeProcessId settings
   either throwIO (const $ void $ takeMVar quit) result
-
-listenPort :: GracefulSettings resource -> IO Socket
-listenPort = listenOn . PortNumber . gracefulSettingsPortNumber
 
 tryRecvSocket :: GracefulSettings resource -> IO (Either IOException Socket)
 tryRecvSocket settings =
