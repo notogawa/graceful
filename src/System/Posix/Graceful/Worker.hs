@@ -25,6 +25,9 @@ import System.Posix.Process ( exitImmediately )
 import System.Posix.Signals ( Handler(..), installHandler, sigQUIT )
 
 -- | Worker process settings
+--
+-- Since 0.1.0.0
+--
 data GracefulWorker = forall resource .
     GracefulWorker { gracefulWorkerInitialize :: IO resource
                    , gracefulWorkerApplication :: Socket -> resource -> IO ()

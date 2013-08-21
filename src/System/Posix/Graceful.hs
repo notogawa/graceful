@@ -32,6 +32,9 @@ import System.Posix.Graceful.Handler
 import System.Posix.Graceful.Worker
 
 -- | Server settings
+--
+-- Since 0.1.0.0
+--
 data GracefulSettings =
     GracefulSettings
     { gracefulSettingsListen :: IO Socket -- ^ Listen socket
@@ -42,6 +45,9 @@ data GracefulSettings =
     }
 
 -- | Make server application enable shutdown/restart gracefully
+--
+-- Since 0.1.0.0
+--
 graceful :: GracefulSettings -> GracefulWorker -> IO ()
 graceful settings worker = do
   quit <- newEmptyMVar
