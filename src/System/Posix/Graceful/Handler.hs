@@ -59,8 +59,8 @@ waitAllProcess settings = do
   status <- getAnyProcessStatus True False
   case status of
     Nothing -> return ()
-    Just (pid, _s) -> do
-                remain <-atomically $ do
+    Just (pid, _) -> do
+                remain <- atomically $ do
                             modifyTVar' (handlerSettingsProcessIDs settings) (filter (pid /=))
                             readTVar (handlerSettingsProcessIDs settings)
                 unless (null remain) $ waitAllProcess settings

@@ -19,9 +19,9 @@ import Control.Concurrent.STM ( newTVarIO )
 import Control.Exception ( IOException, bracket, bracket_, try, throwIO )
 import Control.Monad ( replicateM, void, when )
 import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
-                              , connect, close, accept, shutdown, bindSocket, listen
+                              , connect, close, accept, bindSocket, listen
                               , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
-                              , Family(..), SocketType(..), ShutdownCmd(..), SockAddr(..) )
+                              , Family(..), SocketType(..), SockAddr(..) )
 import System.Directory ( doesFileExist, removeFile, renameFile )
 import System.Posix.IO ( dup )
 import System.Posix.Process ( getProcessID, forkProcess, executeFile, getProcessStatus )
@@ -65,9 +65,7 @@ tryRecvSocket :: GracefulSettings -> IO (Either IOException Socket)
 tryRecvSocket settings =
     tryIO $ bracket (socket AF_UNIX Stream 0) close $ \uds -> do
       connect uds $ SockAddrUnix $ gracefulSettingsSockFile settings
-      sock <- recvSock uds
-      shutdown uds ShutdownBoth
-      return sock
+      recvSock uds
 
 writeProcessId :: GracefulSettings -> IO ()
 writeProcessId settings =
@@ -90,10 +88,7 @@ spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
     bindSocket uds $ SockAddrUnix sockFile
     listen uds 1
     pid <- forkProcess $ executeFile binary False [] Nothing
-    bracket (accept uds) (close . fst) $ \(s, _) -> do
-      sendSock s sock
-      shutdown s ShutdownBoth
-    shutdown uds ShutdownBoth
+    bracket (accept uds) (close . fst) $ \(s, _) -> sendSock s sock
     void $ getProcessStatus True False pid
 
 tryIO :: IO a -> IO (Either IOException a)

@@ -19,7 +19,7 @@ import Control.Concurrent.STM ( atomically, newTVarIO, modifyTVar', readTVar )
 import Control.Exception ( IOException, bracket, bracket_, finally, try )
 import Control.Monad ( void, forever, when )
 import Network ( Socket )
-import Network.Socket.Wrapper ( close, accept, shutdown, ShutdownCmd(ShutdownBoth) )
+import Network.Socket.Wrapper ( close, accept )
 import System.Exit ( ExitCode(..) )
 import System.Posix.Process ( exitImmediately )
 import System.Posix.Signals ( Handler(..), installHandler, sigQUIT )
@@ -45,7 +45,7 @@ workerProcess GracefulWorker { gracefulWorkerInitialize = initialize
   void $ tryIO $ bracket initialize finalize $ \resource ->
       void $ forever $ do
         (s, _) <- accept sock
-        let app = application s resource >> shutdown s ShutdownBoth
+        let app = application s resource
         forkIO $ bracket_
                    (atomically $ modifyTVar' count succ)
                    (atomically $ modifyTVar' count pred)
