@@ -1,3 +1,3 @@
 language: haskell
-after_script:
-  - cat dist/test/graceful-0.1.0.0-graceful-spec.log
+script:
+  - cabal configure --enable-tests && cabal build && cabal test --show-details=always
