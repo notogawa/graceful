@@ -51,3 +51,4 @@ test-suite graceful-spec
                      , unix
                      , stm
                      , directory
+                     , filepath

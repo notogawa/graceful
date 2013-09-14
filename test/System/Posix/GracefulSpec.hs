@@ -4,16 +4,14 @@ module System.Posix.GracefulSpec ( spec ) where
 import Control.Concurrent
 import Control.Exception
 import Control.Monad
-import Data.Char
-import Data.Bits
 import Data.List
-import Data.Word
 import Network
 import Network.Socket
-import Numeric
 import System.Cmd
 import System.Directory
 import System.Exit
+import System.FilePath
+import System.Posix.Files
 import System.Posix.Signals
 import System.Posix.Types
 import System.Process
@@ -120,44 +118,18 @@ packageOption = "-package-db"
 buildAsEchoServer :: FilePath -> IO ()
 buildAsEchoServer file = do
   removeFileIfExist "/tmp/echo-server"
-  conf <- packageConf
+  confDistDir <- getConfDistDir
   (code, _out, _err) <- readProcessWithExitCode "ghc"
                         [ "--make", file
                         , "-o", "/tmp/echo-server"
-                        , packageOption, conf
+                        , packageOption, confDistDir ++ "/package.conf.inplace"
                         ] ""
   code `shouldBe` ExitSuccess
 
-packageConf :: IO FilePath
-packageConf = maybe "dist/package.conf.inplace" id `fmap`
-              sandboxPackageConf
-
-sandboxPackageConf :: IO (Maybe FilePath)
-sandboxPackageConf = do
-  cd <- getCurrentDirectory
-  let prefix = cd ++ "/.cabal-sandbox"
-  let confDistDir = "dist/dist-sandbox-" ++ showHex (jenkins prefix) ""
-  let conf = confDistDir ++ "/package.conf.inplace"
-  putStrLn conf
-  exist <- doesFileExist conf
-  return $ if exist then Just conf else Nothing
-
-jenkins :: String -> Word32
-jenkins str = loop_finish $ foldl' loop 0 str
-  where
-    loop :: Word32 -> Char -> Word32
-    loop hash key_i' = hash'''
-      where
-        key_i   = toEnum . ord $ key_i'
-        hash'   = hash + key_i
-        hash''  = hash' + shiftL hash' 10
-        hash''' = hash'' `xor` shiftR hash'' 6
-    loop_finish :: Word32 -> Word32
-    loop_finish hash = hash'''
-      where
-        hash'   = hash + shiftL hash 3
-        hash''  = hash' `xor` shiftR hash' 11
-        hash''' = hash'' + shiftL hash'' 15
+getConfDistDir :: IO FilePath
+getConfDistDir = fmap (dirname . dirname . dirname) getModuleFile where
+    dirname = takeDirectory
+    getModuleFile = readSymbolicLink "/proc/self/exe"
 
 ps :: IO [ProcessID]
 ps = do
