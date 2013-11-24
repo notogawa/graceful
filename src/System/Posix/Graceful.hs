@@ -23,6 +23,7 @@ import Network.Socket.Wrapper ( Socket(..), socket, mkSocket
                               , send, recv, sendFd, recvFd, fdSocket, SocketStatus(..)
                               , Family(..), SocketType(..), SockAddr(..) )
 import System.Directory ( doesFileExist, removeFile, renameFile )
+import System.Environment ( getArgs )
 import System.Posix.IO ( dup )
 import System.Posix.Process ( getProcessID, forkProcess, executeFile, getProcessStatus )
 import System.Posix.Signals ( blockSignals, unblockSignals, fullSignalSet )
@@ -88,14 +89,16 @@ spawnProcess GracefulSettings { gracefulSettingsSockFile = sockFile
                               , gracefulSettingsPidFile = pidFile
                               } sock = do
   exist <- doesFileExist pidFile
-  when exist $ renameFile pidFile (pidFile ++ ".old")
-  clearUnixDomainSocket sockFile
-  bracket (socket AF_UNIX Stream 0) close $ \uds -> do
-    bindSocket uds $ SockAddrUnix sockFile
-    listen uds 1
-    pid <- forkProcess $ executeFile binary False [] Nothing
-    bracket (accept uds) (close . fst) $ \(s, _) -> sendSock s sock
-    void $ getProcessStatus True False pid
+  when exist $ do
+    clearUnixDomainSocket sockFile
+    bracket (socket AF_UNIX Stream 0) close $ \uds -> do
+      bindSocket uds $ SockAddrUnix sockFile
+      listen uds 1
+      args <- getArgs
+      pid <- forkProcess $ executeFile binary False args Nothing
+      bracket (accept uds) (close . fst) $ \(s, _) -> sendSock s sock
+      renameFile pidFile (pidFile ++ ".old")
+      void $ getProcessStatus True False pid
 
 tryIO :: IO a -> IO (Either IOException a)
 tryIO = try
