@@ -31,9 +31,9 @@ library
   other-modules:       System.Posix.Graceful.Handler
                        System.Posix.Graceful.Worker
                        Network.Socket.Wrapper
-  build-depends:       base >=4.5 && <4.7
-                     , network >=2.3 && <2.5
-                     , unix >=2.5 && <2.7
+  build-depends:       base >=4.5 && <4.8
+                     , network >=2.3 && <2.6
+                     , unix >=2.5 && <2.8
                      , stm >=2.3 && <2.5
                      , directory >=1.1 && <1.3
 
