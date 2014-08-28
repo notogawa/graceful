@@ -48,8 +48,7 @@ install:
 script:
   - cabal-1.20 configure --enable-tests -v2
   - cabal-1.20 build
-  - ./dist/build/graceful-spec/graceful-spec
-#  - cabal-1.20 test --show-details=always
+  - cabal-1.20 test --show-details=always
   - cabal-1.20 check
   - cabal-1.20 sdist
   - export SRC_TGZ=$(cabal-1.20 info . | awk '{print $2 ".tar.gz";exit}') ;

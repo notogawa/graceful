@@ -7,7 +7,10 @@ import Control.Monad
 import Data.List
 import Network
 import Network.Socket
+#if MIN_VERSION_process(1,0,1)
+#else
 import System.Cmd
+#endif
 import System.Directory
 import System.Exit
 import System.FilePath
@@ -63,11 +66,14 @@ waitProcessDecreaseTo n = do
 
 run :: IO () -> IO ()
 run action = do
+  procs <- fmap length ps
+  procs `shouldBe` 0
   buildAsEchoServer "test/echo.hs"
   let file = "/tmp/echo-server"
   mapM_ (removeFileIfExist . (file ++)) [ ".sock", ".pid" ]
   rawSystem file [] `shouldReturn` ExitSuccess
   waitStandby $ file ++ ".pid"
+  waitProcessIncreaseTo 5
   action
   waitProcessDecreaseTo 0
 
