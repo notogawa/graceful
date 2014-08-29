@@ -50,7 +50,7 @@ waitStandby path = do
 
 waitProcessIncreaseTo :: Int -> IO ()
 waitProcessIncreaseTo n = do
-  threadDelay 10000
+  threadDelay 1000000
   procs <- fmap length ps
   procs `shouldSatisfy` (<= n)
   if procs < n
@@ -59,7 +59,7 @@ waitProcessIncreaseTo n = do
 
 waitProcessDecreaseTo :: Int -> IO ()
 waitProcessDecreaseTo n = do
-  threadDelay 10000
+  threadDelay 1000000
   procs <- fmap length ps
   procs `shouldSatisfy` (>= n)
   if procs > n
