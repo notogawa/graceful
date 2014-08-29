@@ -156,6 +156,7 @@ restartKeepWorkers = do
   pids <- ps
   length pids `shouldBe` 5 -- master + 4 worker
   kill sigHUP
+  threadDelay 1000
   waitProcessDecreaseTo 5
   pids' <- ps
   length pids' `shouldBe` 5 -- master + 4 worker
