@@ -50,6 +50,7 @@ waitStandby path = do
 
 waitProcessIncreaseTo :: Int -> IO ()
 waitProcessIncreaseTo n = do
+  threadDelay 10000
   procs <- fmap length ps
   procs `shouldSatisfy` (<= n)
   if procs < n
@@ -58,6 +59,7 @@ waitProcessIncreaseTo n = do
 
 waitProcessDecreaseTo :: Int -> IO ()
 waitProcessDecreaseTo n = do
+  threadDelay 10000
   procs <- fmap length ps
   procs `shouldSatisfy` (>= n)
   if procs > n
@@ -156,7 +158,6 @@ restartKeepWorkers = do
   pids <- ps
   length pids `shouldBe` 5 -- master + 4 worker
   kill sigHUP
-  threadDelay 1000
   waitProcessDecreaseTo 5
   pids' <- ps
   length pids' `shouldBe` 5 -- master + 4 worker
